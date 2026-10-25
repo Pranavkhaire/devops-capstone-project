@@ -1,61 +1,43 @@
+
 """
-Account Service
+Account Service routes.
 
-This microservice handles the lifecycle of Accounts
+Implements REST API endpoints for creating, listing, reading,
+updating, and deleting accounts.
 """
-# pylint: disable=unused-import
-from flask import jsonify, request, make_response, abort, url_for   # noqa; F401
-from service.models import Account
-from service.common import status  # HTTP Status Codes
-from . import app  # Import Flask application
 
-
-############################################################
-# Health Endpoint
-############################################################
-@app.route("/health")
-def health():
-    """Health Status"""
-    return jsonify(dict(status="OK")), status.HTTP_200_OK
+from flask import jsonify, request, abort
+from service import app
+from service.models import Account, DataValidationError
+from service.common import status
 
 
 ######################################################################
-# GET INDEX
+# CREATE AN ACCOUNT
 ######################################################################
-@app.route("/")
-def index():
-    """Root URL response"""
-    return (
-        jsonify(
-            name="Account REST API Service",
-            version="1.0",
-            # paths=url_for("list_accounts", _external=True),
-        ),
-        status.HTTP_200_OK,
-    )
 
-
-######################################################################
-# CREATE A NEW ACCOUNT
-######################################################################
 @app.route("/accounts", methods=["POST"])
-def create_accounts():
-    """
-    Creates an Account
-    This endpoint will create an Account based the data in the body that is posted
-    """
+def create_account():
+    """Creates an Account."""
     app.logger.info("Request to create an Account")
     check_content_type("application/json")
+
+    data = request.get_json()
+    if data is None:
+        abort(status.HTTP_400_BAD_REQUEST, "Request body must be JSON")
+
     account = Account()
-    account.deserialize(request.get_json())
-    account.create()
-    message = account.serialize()
-    # Uncomment once get_accounts has been implemented
-    # location_url = url_for("get_accounts", account_id=account.id, _external=True)
-    location_url = "/"  # Remove once get_accounts has been implemented
-    return make_response(
-        jsonify(message), status.HTTP_201_CREATED, {"Location": location_url}
-    )
+    try:
+        account.deserialize(data)
+        account.create()
+    except DataValidationError as error:
+        abort(status.HTTP_400_BAD_REQUEST, str(error))
+
+    location_url = f"/accounts/{account.id}"
+    return jsonify(account.serialize()), status.HTTP_201_CREATED, {
+        "Location": location_url
+    }
+
 
 ######################################################################
 # LIST ALL ACCOUNTS
@@ -63,42 +45,42 @@ def create_accounts():
 
 @app.route("/accounts", methods=["GET"])
 def list_accounts():
-    """Returns all Accounts"""
+    """Returns all Accounts."""
     app.logger.info("Request to list Accounts")
 
     accounts = Account.all()
     results = [account.serialize() for account in accounts]
 
-    return jsonify(results), status.HTTP_200_OK# ... place you code here to LIST accounts ...
+    return jsonify(results), status.HTTP_200_OK
 
 
 ######################################################################
 # READ AN ACCOUNT
 ######################################################################
 
-# ... place you code here to READ an account ...
 @app.route("/accounts/<int:account_id>", methods=["GET"])
 def get_account(account_id):
-    """Reads an Account"""
+    """Reads an Account."""
     app.logger.info("Request to read Account with id: %s", account_id)
 
     account = Account.find(account_id)
-
     if account is None:
-        abort(status.HTTP_404_NOT_FOUND, f"Account with id '{account_id}' was not found.")
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Account with id '{account_id}' was not found.",
+        )
 
     return jsonify(account.serialize()), status.HTTP_200_OK
+
 
 ######################################################################
 # UPDATE AN EXISTING ACCOUNT
 ######################################################################
 
-# ... place you code here to UPDATE an account ...
 @app.route("/accounts/<int:account_id>", methods=["PUT"])
 def update_account(account_id):
-    """Updates an Account"""
+    """Updates an existing Account."""
     app.logger.info("Request to update Account with id: %s", account_id)
-
     check_content_type("application/json")
 
     account = Account.find(account_id)
@@ -108,44 +90,47 @@ def update_account(account_id):
             f"Account with id '{account_id}' was not found.",
         )
 
-    account.deserialize(request.get_json())
-    account.update()
+    data = request.get_json()
+    if data is None:
+        abort(status.HTTP_400_BAD_REQUEST, "Request body must be JSON")
+
+    try:
+        account.deserialize(data)
+        account.update()
+    except DataValidationError as error:
+        abort(status.HTTP_400_BAD_REQUEST, str(error))
 
     return jsonify(account.serialize()), status.HTTP_200_OK
 
-######################################################################
-# DELETE AN ACCOUNT
-######################################################################
 
-# ... place you code here to DELETE an account ...
 ######################################################################
 # DELETE AN ACCOUNT
 ######################################################################
 
 @app.route("/accounts/<int:account_id>", methods=["DELETE"])
 def delete_account(account_id):
-    """Deletes an Account"""
+    """Deletes an Account."""
     app.logger.info("Request to delete Account with id: %s", account_id)
 
     account = Account.find(account_id)
+    if account is None:
+        abort(
+            status.HTTP_404_NOT_FOUND,
+            f"Account with id '{account_id}' was not found.",
+        )
 
-    if account:
-        account.delete()
-
+    account.delete()
     return "", status.HTTP_204_NO_CONTENT
 
+
 ######################################################################
-#  U T I L I T Y   F U N C T I O N S
+# CONTENT TYPE VALIDATION
 ######################################################################
 
-
-def check_content_type(media_type):
-    """Checks that the media type is correct"""
-    content_type = request.headers.get("Content-Type")
-    if content_type and content_type == media_type:
-        return
-    app.logger.error("Invalid Content-Type: %s", content_type)
-    abort(
-        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-        f"Content-Type must be {media_type}",
-    )
+def check_content_type(content_type):
+    """Checks whether the request has the expected content type."""
+    if request.headers.get("Content-Type") != content_type:
+        abort(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            f"Content-Type must be {content_type}",
+        )
