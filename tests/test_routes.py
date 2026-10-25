@@ -148,3 +148,24 @@ class TestAccountService(TestCase):
             response.status_code,
             status.HTTP_404_NOT_FOUND
         )
+    def test_list_accounts(self):
+        """It should List all Accounts"""
+        accounts = self._create_accounts(3)
+
+        response = self.client.get(BASE_URL)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.get_json()
+        self.assertEqual(len(data), 3)
+
+        # Check that all created accounts are returned
+        returned_ids = [item["id"] for item in data]
+        for account in accounts:
+            self.assertIn(account.id, returned_ids)
+
+    def test_list_accounts_no_accounts(self):
+        """It should return an empty list when there are no Accounts"""
+        response = self.client.get(BASE_URL)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.get_json(), [])
